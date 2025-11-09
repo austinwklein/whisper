@@ -66,41 +66,37 @@ func (m *Manager) SendFriendRequest(ctx context.Context, currentUser *storage.Us
 		return ErrCannotAddSelf
 	}
 
-	// Check if already friends or request pending
-	// First, we need to get the target user's ID from their peer ID
+	// Check if target user exists in our local database
 	targetUser, err := m.storage.GetUserByPeerID(ctx, targetPeerID.String())
-	if err != nil {
-		return fmt.Errorf("failed to get target user: %w", err)
-	}
-	if targetUser == nil {
-		return errors.New("target user not found")
-	}
-
-	// Check if friend relationship already exists
-	existingFriend, err := m.storage.GetFriendRequest(ctx, currentUser.ID, targetUser.ID)
-	if err != nil {
-		return fmt.Errorf("failed to check existing friendship: %w", err)
-	}
-	if existingFriend != nil {
-		if existingFriend.Status == "accepted" {
-			return ErrAlreadyFriends
+	if err == nil && targetUser != nil {
+		// Target user exists locally - check if already friends or request pending
+		existingFriend, err := m.storage.GetFriendRequest(ctx, currentUser.ID, targetUser.ID)
+		if err != nil {
+			return fmt.Errorf("failed to check existing friendship: %w", err)
 		}
-		return ErrPendingRequest
-	}
+		if existingFriend != nil {
+			if existingFriend.Status == "accepted" {
+				return ErrAlreadyFriends
+			}
+			return ErrPendingRequest
+		}
 
-	// Create friend request in database
-	friend := &storage.Friend{
-		UserID:   currentUser.ID,
-		FriendID: targetUser.ID,
-		PeerID:   targetUser.PeerID,
-		Username: targetUser.Username,
-		FullName: targetUser.FullName,
-		Status:   "pending",
-	}
+		// Create friend request in database
+		friend := &storage.Friend{
+			UserID:   currentUser.ID,
+			FriendID: targetUser.ID,
+			PeerID:   targetUser.PeerID,
+			Username: targetUser.Username,
+			FullName: targetUser.FullName,
+			Status:   "pending",
+		}
 
-	if err := m.storage.CreateFriendRequest(ctx, friend); err != nil {
-		return fmt.Errorf("failed to create friend request: %w", err)
+		if err := m.storage.CreateFriendRequest(ctx, friend); err != nil {
+			return fmt.Errorf("failed to create friend request: %w", err)
+		}
 	}
+	// If target user doesn't exist locally, we'll still send the P2P request
+	// The receiving side will handle creating the user record and friendship
 
 	// Send friend request over P2P
 	stream, err := m.host.NewStream(ctx, targetPeerID, ProtocolFriendRequest)
