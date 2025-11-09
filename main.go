@@ -147,6 +147,15 @@ func (a *App) commandLoop(ctx context.Context) {
 			if err != nil {
 				fmt.Printf("Login failed: %v\n", err)
 			} else {
+				// Update user's peer ID to current one (in case it changed after restart)
+				currentPeerID := a.p2p.PeerID().String()
+				if user.PeerID != currentPeerID {
+					user.PeerID = currentPeerID
+					if err := a.storage.UpdateUser(ctx, user); err != nil {
+						fmt.Printf("Warning: Failed to update peer ID: %v\n", err)
+					}
+				}
+
 				fmt.Printf("✓ Welcome back, %s!\n", user.FullName)
 				// Set current user for friend manager
 				a.friendManager.SetCurrentUser(user.ID)
