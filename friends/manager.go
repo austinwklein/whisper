@@ -332,6 +332,69 @@ func (m *Manager) handleIncomingRequest(request *FriendRequestMessage, fromPeer 
 }
 
 func (m *Manager) handleIncomingAccept(response *FriendResponseMessage, fromPeer peer.ID) {
+	ctx := context.Background()
+
+	// Ensure the accepting user exists in our database
+	acceptingUser, err := m.storage.GetUserByUsername(ctx, response.Username)
+	if err != nil || acceptingUser == nil {
+		// Create user record for the accepting user
+		acceptingUser = &storage.User{
+			Username:     response.Username,
+			PasswordHash: "P2P_REMOTE_USER",
+			FullName:     response.FullName,
+			PeerID:       response.PeerID,
+		}
+		if err := m.storage.CreateUser(ctx, acceptingUser); err != nil {
+			fmt.Printf("Error creating user record for %s: %v\n", response.Username, err)
+			return
+		}
+	}
+
+	// Get current user
+	if m.currentUserID == 0 {
+		fmt.Printf("\n✓ %s accepted your friend request!\n", response.FullName)
+		fmt.Printf("   You are now friends with %s (%s)\n", response.FullName, response.Username)
+		fmt.Print("> ")
+		return
+	}
+
+	currentUser, err := m.storage.GetUserByID(ctx, m.currentUserID)
+	if err != nil || currentUser == nil {
+		fmt.Printf("\n✓ %s accepted your friend request!\n", response.FullName)
+		fmt.Printf("   You are now friends with %s (%s)\n", response.FullName, response.Username)
+		fmt.Print("> ")
+		return
+	}
+
+	// Create bidirectional friendship records if they don't exist
+	// 1. Current user -> Accepting user (this should already exist as "pending")
+	existingRequest, _ := m.storage.GetFriendRequest(ctx, currentUser.ID, acceptingUser.ID)
+	if existingRequest != nil && existingRequest.Status == "pending" {
+		existingRequest.Status = "accepted"
+		now := time.Now()
+		existingRequest.AcceptedAt = now
+		if err := m.storage.UpdateFriendRequest(ctx, existingRequest); err != nil {
+			fmt.Printf("Warning: Failed to update friend request: %v\n", err)
+		}
+	}
+
+	// 2. Accepting user -> Current user (reciprocal friendship)
+	reciprocalFriend, _ := m.storage.GetFriendRequest(ctx, acceptingUser.ID, currentUser.ID)
+	if reciprocalFriend == nil {
+		reciprocalFriend = &storage.Friend{
+			UserID:     acceptingUser.ID,
+			FriendID:   currentUser.ID,
+			PeerID:     acceptingUser.PeerID,
+			Username:   acceptingUser.Username,
+			FullName:   acceptingUser.FullName,
+			Status:     "accepted",
+			AcceptedAt: time.Now(),
+		}
+		if err := m.storage.CreateFriendRequest(ctx, reciprocalFriend); err != nil {
+			fmt.Printf("Warning: Failed to create reciprocal friendship: %v\n", err)
+		}
+	}
+
 	fmt.Printf("\n✓ %s accepted your friend request!\n", response.FullName)
 	fmt.Printf("   You are now friends with %s (%s)\n", response.FullName, response.Username)
 	fmt.Print("> ")
