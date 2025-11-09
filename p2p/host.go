@@ -9,6 +9,7 @@ import (
 
 	"github.com/libp2p/go-libp2p"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -30,6 +31,7 @@ const (
 type P2PHost struct {
 	host      host.Host
 	dht       *dht.IpfsDHT
+	pubsub    *pubsub.PubSub
 	ctx       context.Context
 	discovery mdns.Service
 	mu        sync.RWMutex
@@ -116,11 +118,19 @@ func NewP2PHost(ctx context.Context, port int, privKey crypto.PrivKey) (*P2PHost
 		return nil, fmt.Errorf("failed to bootstrap DHT: %w", err)
 	}
 
+	// Create GossipSub for pub/sub messaging (conferences)
+	ps, err := pubsub.NewGossipSub(ctx, h)
+	if err != nil {
+		h.Close()
+		return nil, fmt.Errorf("failed to create GossipSub: %w", err)
+	}
+
 	p2pHost := &P2PHost{
-		host:  h,
-		dht:   kdht,
-		ctx:   ctx,
-		peers: make(map[peer.ID]*PeerInfo),
+		host:   h,
+		dht:    kdht,
+		pubsub: ps,
+		ctx:    ctx,
+		peers:  make(map[peer.ID]*PeerInfo),
 	}
 
 	// Set up connection notifications
@@ -149,6 +159,11 @@ func (p *P2PHost) PeerID() peer.ID {
 // Host returns the underlying libp2p host
 func (p *P2PHost) Host() host.Host {
 	return p.host
+}
+
+// PubSub returns the GossipSub instance for pub/sub messaging
+func (p *P2PHost) PubSub() *pubsub.PubSub {
+	return p.pubsub
 }
 
 // Addrs returns the local multiaddresses
