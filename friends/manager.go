@@ -270,6 +270,61 @@ func (m *Manager) GetPendingRequests(ctx context.Context, userID int64) ([]*stor
 
 // Protocol message handlers
 func (m *Manager) handleIncomingRequest(request *FriendRequestMessage, fromPeer peer.ID) {
+	ctx := context.Background()
+
+	// First, check if this user exists in our database, if not create them
+	fromUser, err := m.storage.GetUserByUsername(ctx, request.FromUsername)
+	if err != nil || fromUser == nil {
+		// User doesn't exist - this is normal in P2P when someone contacts us
+		// Create a basic user record so we can store the friend request
+		fromUser = &storage.User{
+			Username:     request.FromUsername,
+			PasswordHash: "P2P_REMOTE_USER", // Placeholder - they registered on another peer
+			FullName:     request.FromFullName,
+			PeerID:       request.FromPeerID,
+		}
+		if err := m.storage.CreateUser(ctx, fromUser); err != nil {
+			fmt.Printf("Error creating user record for %s: %v\n", request.FromUsername, err)
+			return
+		}
+	}
+
+	// Get current user
+	if m.currentUserID == 0 {
+		fmt.Printf("\n📨 Friend request from %s (%s) - login to accept/reject\n", request.FromFullName, request.FromUsername)
+		return
+	}
+
+	currentUser, err := m.storage.GetUserByID(ctx, m.currentUserID)
+	if err != nil || currentUser == nil {
+		fmt.Printf("Error: Could not get current user\n")
+		return
+	}
+
+	// If fromUser exists in DB, create the friend request record
+	if fromUser != nil && fromUser.ID > 0 {
+		// Check if request already exists
+		existing, _ := m.storage.GetFriendRequest(ctx, fromUser.ID, currentUser.ID)
+		if existing != nil {
+			fmt.Printf("\n📨 Friend request from %s (%s) already exists\n", request.FromFullName, request.FromUsername)
+			return
+		}
+
+		// Create friend request
+		friendReq := &storage.Friend{
+			UserID:   fromUser.ID,
+			FriendID: currentUser.ID,
+			PeerID:   fromUser.PeerID,
+			Username: fromUser.Username,
+			FullName: fromUser.FullName,
+			Status:   "pending",
+		}
+
+		if err := m.storage.CreateFriendRequest(ctx, friendReq); err != nil {
+			fmt.Printf("Error saving friend request: %v\n", err)
+		}
+	}
+
 	fmt.Printf("\n📨 Friend request from %s (%s)\n", request.FromFullName, request.FromUsername)
 	fmt.Printf("   Message: %s\n", request.Message)
 	fmt.Printf("   Use 'accept %s' or 'reject %s'\n", request.FromUsername, request.FromUsername)

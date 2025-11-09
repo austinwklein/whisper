@@ -51,6 +51,9 @@ func (m *Manager) SendMessage(ctx context.Context, currentUser *storage.User, to
 	if err != nil {
 		return fmt.Errorf("user not found: %w", err)
 	}
+	if toUser == nil {
+		return fmt.Errorf("user '%s' not found - you must be friends first (use 'add %s' to send friend request)", toUsername, toUsername)
+	}
 
 	// Check if they are friends
 	friendship, err := m.storage.GetFriendRequest(ctx, currentUser.ID, toUser.ID)
