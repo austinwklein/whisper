@@ -54,6 +54,7 @@ func NewP2PHost(ctx context.Context, port int, privKey crypto.PrivKey) (*P2PHost
 	}
 
 	// Create listen address
+	// If port is 0, libp2p will automatically select an available port
 	listenAddr := fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", port)
 
 	// Create libp2p host
@@ -66,7 +67,22 @@ func NewP2PHost(ctx context.Context, port int, privKey crypto.PrivKey) (*P2PHost
 		libp2p.NATPortMap(),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create libp2p host: %w", err)
+		// If specified port is in use and not 0, try with port 0 (auto-select)
+		if port != 0 {
+			fmt.Printf("Port %d in use, trying automatic port selection...\n", port)
+			listenAddr = "/ip4/0.0.0.0/tcp/0"
+			h, err = libp2p.New(
+				libp2p.Identity(privKey),
+				libp2p.ListenAddrStrings(listenAddr),
+				libp2p.DefaultTransports,
+				libp2p.DefaultMuxers,
+				libp2p.DefaultSecurity,
+				libp2p.NATPortMap(),
+			)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to create libp2p host: %w", err)
+		}
 	}
 
 	// Create DHT for peer discovery
