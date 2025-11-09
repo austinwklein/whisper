@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/libp2p/go-libp2p"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
@@ -43,13 +44,23 @@ type PeerInfo struct {
 	Username  string // Will be populated after user identification
 }
 
-// isPortAvailable checks if a TCP port is available
+// isPortAvailable checks if a TCP port is available for libp2p
 func isPortAvailable(port int) bool {
 	if port == 0 {
 		return true // Port 0 means auto-select
 	}
-	// Try to bind to 0.0.0.0 (all interfaces) to match how libp2p binds
-	addr := fmt.Sprintf("0.0.0.0:%d", port)
+
+	// Check if we can dial the port - if something is listening, it's in use
+	// This works even with SO_REUSEPORT
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 100*time.Millisecond)
+	if err == nil {
+		// Something is listening on this port
+		conn.Close()
+		return false
+	}
+
+	// Also try to bind with SO_REUSEADDR disabled to be extra sure
+	addr := fmt.Sprintf(":%d", port)
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return false
