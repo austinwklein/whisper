@@ -10,6 +10,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/austinwklein/whisper/auth"
 	"github.com/austinwklein/whisper/config"
 	"github.com/austinwklein/whisper/p2p"
 	"github.com/austinwklein/whisper/storage"
@@ -19,6 +20,7 @@ type App struct {
 	config  *config.Config
 	storage storage.Storage
 	p2p     *p2p.P2PHost
+	auth    *auth.AuthService
 }
 
 func main() {
@@ -45,11 +47,15 @@ func main() {
 	}
 	defer p2pHost.Close()
 
+	// Initialize auth service
+	authService := auth.NewAuthService(store)
+
 	// Create app
 	app := &App{
 		config:  cfg,
 		storage: store,
 		p2p:     p2pHost,
+		auth:    authService,
 	}
 
 	// Start app services
@@ -63,11 +69,12 @@ func main() {
 	for _, addr := range p2pHost.GetFullAddrs() {
 		fmt.Printf("  %s\n", addr)
 	}
-	fmt.Println("\n=== Commands ===")
-	fmt.Println("  connect <multiaddr> - Connect to a peer")
-	fmt.Println("  peers               - List connected peers")
-	fmt.Println("  help                - Show this help")
-	fmt.Println("  quit                - Exit the application")
+	fmt.Println("\n=== Getting Started ===")
+	fmt.Println("To use Whisper, you need to register or login:")
+	fmt.Println("  register <username> <password> <full-name>")
+	fmt.Println("  login <username> <password>")
+	fmt.Println()
+	fmt.Println("Type 'help' for all available commands")
 	fmt.Println()
 
 	// Start command loop in a goroutine
@@ -84,7 +91,7 @@ func main() {
 
 func (a *App) Start(ctx context.Context) error {
 	// Initialize DHT, GossipSub, etc.
-	// This will be expanded in Phase 2
+	// This will be expanded in future phases
 	return nil
 }
 
@@ -103,6 +110,108 @@ func (a *App) commandLoop(ctx context.Context) {
 		cmd := parts[0]
 
 		switch cmd {
+		case "register":
+			if len(parts) < 4 {
+				fmt.Println("Usage: register <username> <password> <full-name>")
+				fmt.Println("Example: register alice mypassword123 \"Alice Smith\"")
+				break
+			}
+			username := parts[1]
+			password := parts[2]
+			// Join remaining parts as full name
+			fullName := strings.Join(parts[3:], " ")
+			// Remove quotes if present
+			fullName = strings.Trim(fullName, "\"")
+
+			peerID := a.p2p.PeerID().String()
+			err := a.auth.Register(ctx, username, password, fullName, peerID)
+			if err != nil {
+				fmt.Printf("Registration failed: %v\n", err)
+			} else {
+				fmt.Printf("✓ Registration successful! You can now login with: login %s <password>\n", username)
+			}
+
+		case "login":
+			if len(parts) < 3 {
+				fmt.Println("Usage: login <username> <password>")
+				break
+			}
+			username := parts[1]
+			password := parts[2]
+
+			user, err := a.auth.Login(ctx, username, password)
+			if err != nil {
+				fmt.Printf("Login failed: %v\n", err)
+			} else {
+				fmt.Printf("✓ Welcome back, %s!\n", user.FullName)
+			}
+
+		case "logout":
+			if !a.auth.IsAuthenticated() {
+				fmt.Println("You are not logged in")
+				break
+			}
+			user, _ := a.auth.CurrentUser()
+			a.auth.Logout()
+			fmt.Printf("✓ Logged out %s\n", user.Username)
+
+		case "whoami":
+			if !a.auth.IsAuthenticated() {
+				fmt.Println("Not authenticated. Please login first.")
+				break
+			}
+			user, _ := a.auth.CurrentUser()
+			fmt.Printf("Username: %s\n", user.Username)
+			fmt.Printf("Full Name: %s\n", user.FullName)
+			fmt.Printf("Peer ID: %s\n", user.PeerID)
+			fmt.Printf("Account Created: %s\n", user.CreatedAt.Format("2006-01-02 15:04:05"))
+
+		case "passwd":
+			if !a.auth.IsAuthenticated() {
+				fmt.Println("You must be logged in to change password")
+				break
+			}
+			if len(parts) < 3 {
+				fmt.Println("Usage: passwd <old-password> <new-password>")
+				break
+			}
+			oldPassword := parts[1]
+			newPassword := parts[2]
+
+			err := a.auth.ChangePassword(ctx, oldPassword, newPassword)
+			if err != nil {
+				fmt.Printf("Failed to change password: %v\n", err)
+			} else {
+				fmt.Println("✓ Password changed successfully")
+			}
+
+		case "search":
+			if !a.auth.IsAuthenticated() {
+				fmt.Println("You must be logged in to search for users")
+				break
+			}
+			if len(parts) < 2 {
+				fmt.Println("Usage: search <name>")
+				break
+			}
+			searchName := strings.Join(parts[1:], " ")
+			searchName = strings.Trim(searchName, "\"")
+
+			users, err := a.auth.SearchUsers(ctx, searchName)
+			if err != nil {
+				fmt.Printf("Search failed: %v\n", err)
+				break
+			}
+
+			if len(users) == 0 {
+				fmt.Println("No users found")
+			} else {
+				fmt.Printf("Found %d user(s):\n", len(users))
+				for i, user := range users {
+					fmt.Printf("  %d. %s (%s) - Peer ID: %s\n", i+1, user.FullName, user.Username, user.PeerID)
+				}
+			}
+
 		case "connect":
 			if len(parts) < 2 {
 				fmt.Println("Usage: connect <multiaddr>")
@@ -112,7 +221,7 @@ func (a *App) commandLoop(ctx context.Context) {
 			if err := a.p2p.ConnectToPeer(ctx, addr); err != nil {
 				fmt.Printf("Failed to connect: %v\n", err)
 			} else {
-				fmt.Println("Successfully connected!")
+				fmt.Println("✓ Successfully connected!")
 			}
 
 		case "peers":
@@ -130,11 +239,7 @@ func (a *App) commandLoop(ctx context.Context) {
 			}
 
 		case "help":
-			fmt.Println("\n=== Commands ===")
-			fmt.Println("  connect <multiaddr> - Connect to a peer")
-			fmt.Println("  peers               - List connected peers")
-			fmt.Println("  help                - Show this help")
-			fmt.Println("  quit                - Exit the application")
+			a.showHelp()
 
 		case "quit", "exit":
 			fmt.Println("Exiting...")
@@ -151,4 +256,23 @@ func (a *App) commandLoop(ctx context.Context) {
 	if err := scanner.Err(); err != nil {
 		log.Printf("Error reading input: %v\n", err)
 	}
+}
+
+func (a *App) showHelp() {
+	fmt.Println("\n=== Authentication Commands ===")
+	fmt.Println("  register <username> <password> <full-name> - Create new account")
+	fmt.Println("  login <username> <password>                - Login to your account")
+	fmt.Println("  logout                                      - Logout from current account")
+	fmt.Println("  whoami                                      - Show current user info")
+	fmt.Println("  passwd <old-pass> <new-pass>               - Change your password")
+	fmt.Println("  search <name>                               - Search for users by name")
+	fmt.Println()
+	fmt.Println("=== P2P Commands ===")
+	fmt.Println("  connect <multiaddr>                         - Connect to a peer")
+	fmt.Println("  peers                                       - List connected peers")
+	fmt.Println()
+	fmt.Println("=== General Commands ===")
+	fmt.Println("  help                                        - Show this help")
+	fmt.Println("  quit                                        - Exit the application")
+	fmt.Println()
 }
