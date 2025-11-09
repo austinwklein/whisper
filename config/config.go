@@ -5,6 +5,9 @@ import (
 	"strconv"
 )
 
+// DefaultDBPath can be overridden at build time with -ldflags
+var DefaultDBPath = "~/.whisper/whisper.db"
+
 type Config struct {
 	Port     int    `json:"port"`
 	DBPath   string `json:"db_path"`
@@ -16,7 +19,7 @@ type Config struct {
 func LoadConfig() (*Config, error) {
 	cfg := &Config{
 		Port:     9999,
-		DBPath:   "~/.whisper/whisper.db",
+		DBPath:   DefaultDBPath,
 		DataDir:  "~/.whisper",
 		LogLevel: "info",
 		MaxPeers: 100,

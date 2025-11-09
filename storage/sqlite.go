@@ -390,12 +390,6 @@ func (s *SQLiteStorage) GetUndeliveredMessages(ctx context.Context, userID int64
 		if err := rows.Scan(&msg.ID, &msg.FromUserID, &msg.ToUserID, &msg.FromPeerID, &msg.ToPeerID, &msg.Content, &msg.Delivered, &msg.Read, &msg.CreatedAt, &deliveredAt, &readAt); err != nil {
 			return nil, err
 		}
-		if deliveredAt.Valid {
-			msg.DeliveredAt = deliveredAt.Time
-		}
-		if readAt.Valid {
-			msg.ReadAt = readAt.Time
-		}
 		messages = append(messages, msg)
 	}
 	return messages, rows.Err()
