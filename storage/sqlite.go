@@ -356,8 +356,15 @@ func (s *SQLiteStorage) GetMessages(ctx context.Context, userID, otherUserID int
 	messages := []*Message{}
 	for rows.Next() {
 		msg := &Message{}
-		if err := rows.Scan(&msg.ID, &msg.FromUserID, &msg.ToUserID, &msg.FromPeerID, &msg.ToPeerID, &msg.Content, &msg.Delivered, &msg.Read, &msg.CreatedAt, &msg.DeliveredAt, &msg.ReadAt); err != nil {
+		var deliveredAt, readAt sql.NullTime
+		if err := rows.Scan(&msg.ID, &msg.FromUserID, &msg.ToUserID, &msg.FromPeerID, &msg.ToPeerID, &msg.Content, &msg.Delivered, &msg.Read, &msg.CreatedAt, &deliveredAt, &readAt); err != nil {
 			return nil, err
+		}
+		if deliveredAt.Valid {
+			msg.DeliveredAt = deliveredAt.Time
+		}
+		if readAt.Valid {
+			msg.ReadAt = readAt.Time
 		}
 		messages = append(messages, msg)
 	}
@@ -379,8 +386,15 @@ func (s *SQLiteStorage) GetUndeliveredMessages(ctx context.Context, userID int64
 	messages := []*Message{}
 	for rows.Next() {
 		msg := &Message{}
-		if err := rows.Scan(&msg.ID, &msg.FromUserID, &msg.ToUserID, &msg.FromPeerID, &msg.ToPeerID, &msg.Content, &msg.Delivered, &msg.Read, &msg.CreatedAt, &msg.DeliveredAt, &msg.ReadAt); err != nil {
+		var deliveredAt, readAt sql.NullTime
+		if err := rows.Scan(&msg.ID, &msg.FromUserID, &msg.ToUserID, &msg.FromPeerID, &msg.ToPeerID, &msg.Content, &msg.Delivered, &msg.Read, &msg.CreatedAt, &deliveredAt, &readAt); err != nil {
 			return nil, err
+		}
+		if deliveredAt.Valid {
+			msg.DeliveredAt = deliveredAt.Time
+		}
+		if readAt.Valid {
+			msg.ReadAt = readAt.Time
 		}
 		messages = append(messages, msg)
 	}
