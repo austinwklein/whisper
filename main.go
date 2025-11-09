@@ -13,17 +13,19 @@ import (
 	"github.com/austinwklein/whisper/auth"
 	"github.com/austinwklein/whisper/config"
 	"github.com/austinwklein/whisper/friends"
+	"github.com/austinwklein/whisper/messages"
 	"github.com/austinwklein/whisper/p2p"
 	"github.com/austinwklein/whisper/storage"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 type App struct {
-	config        *config.Config
-	storage       storage.Storage
-	p2p           *p2p.P2PHost
-	auth          *auth.AuthService
-	friendManager *friends.Manager
+	config         *config.Config
+	storage        storage.Storage
+	p2p            *p2p.P2PHost
+	auth           *auth.AuthService
+	friendManager  *friends.Manager
+	messageManager *messages.Manager
 }
 
 func main() {
@@ -56,13 +58,17 @@ func main() {
 	// Initialize friend manager
 	friendManager := friends.NewManager(store, p2pHost.Host())
 
+	// Initialize message manager
+	messageManager := messages.NewManager(store, p2pHost.Host())
+
 	// Create app
 	app := &App{
-		config:        cfg,
-		storage:       store,
-		p2p:           p2pHost,
-		auth:          authService,
-		friendManager: friendManager,
+		config:         cfg,
+		storage:        store,
+		p2p:            p2pHost,
+		auth:           authService,
+		friendManager:  friendManager,
+		messageManager: messageManager,
 	}
 
 	// Start app services
@@ -157,8 +163,9 @@ func (a *App) commandLoop(ctx context.Context) {
 				}
 
 				fmt.Printf("✓ Welcome back, %s!\n", user.FullName)
-				// Set current user for friend manager
+				// Set current user for friend manager and message manager
 				a.friendManager.SetCurrentUser(user.ID)
+				a.messageManager.SetCurrentUser(user.ID)
 				// Publish user to DHT
 				go func() {
 					if err := a.p2p.PublishUser(ctx, username); err != nil {
@@ -166,6 +173,12 @@ func (a *App) commandLoop(ctx context.Context) {
 					}
 					// Keep refreshing presence
 					a.p2p.RefreshUserPresence(ctx, username)
+				}()
+				// Try to deliver any undelivered messages
+				go func() {
+					if err := a.messageManager.RetryUndeliveredMessages(ctx, user.ID); err != nil {
+						fmt.Printf("Warning: Failed to retry undelivered messages: %v\n", err)
+					}
 				}()
 			}
 
@@ -177,6 +190,7 @@ func (a *App) commandLoop(ctx context.Context) {
 			user, _ := a.auth.CurrentUser()
 			a.auth.Logout()
 			a.friendManager.SetCurrentUser(0)
+			a.messageManager.SetCurrentUser(0)
 			fmt.Printf("✓ Logged out %s\n", user.Username)
 
 		case "whoami":
@@ -397,6 +411,134 @@ func (a *App) commandLoop(ctx context.Context) {
 				}
 			}
 
+		case "msg":
+			if !a.auth.IsAuthenticated() {
+				fmt.Println("You must be logged in to send messages")
+				break
+			}
+			if len(parts) < 3 {
+				fmt.Println("Usage: msg <username> <message>")
+				fmt.Println("Example: msg alice Hello, how are you?")
+				break
+			}
+			toUsername := parts[1]
+			message := strings.Join(parts[2:], " ")
+
+			currentUser, _ := a.auth.CurrentUser()
+			err := a.messageManager.SendMessage(ctx, currentUser, toUsername, message)
+			if err != nil {
+				fmt.Printf("Failed to send message: %v\n", err)
+			}
+
+		case "history":
+			if !a.auth.IsAuthenticated() {
+				fmt.Println("You must be logged in to view message history")
+				break
+			}
+			if len(parts) < 2 {
+				fmt.Println("Usage: history <username> [limit]")
+				fmt.Println("Example: history alice 20")
+				break
+			}
+			otherUsername := parts[1]
+			limit := 20
+			if len(parts) >= 3 {
+				fmt.Sscanf(parts[2], "%d", &limit)
+			}
+
+			currentUser, _ := a.auth.CurrentUser()
+			otherUser, err := a.storage.GetUserByUsername(ctx, otherUsername)
+			if err != nil || otherUser == nil {
+				fmt.Printf("User not found: %s\n", otherUsername)
+				break
+			}
+
+			messages, err := a.messageManager.GetConversation(ctx, currentUser.ID, otherUser.ID, limit)
+			if err != nil {
+				fmt.Printf("Failed to get messages: %v\n", err)
+				break
+			}
+
+			if len(messages) == 0 {
+				fmt.Printf("No message history with %s\n", otherUsername)
+			} else {
+				fmt.Printf("\n=== Conversation with %s (%d messages) ===\n", otherUser.FullName, len(messages))
+				// Messages are in DESC order, so reverse them for display
+				for i := len(messages) - 1; i >= 0; i-- {
+					msg := messages[i]
+					timestamp := msg.CreatedAt.Format("15:04:05")
+
+					var sender string
+					if msg.FromUserID == currentUser.ID {
+						sender = "You"
+					} else {
+						sender = otherUser.FullName
+					}
+
+					status := ""
+					if msg.FromUserID == currentUser.ID {
+						if msg.Read {
+							status = " ✓✓"
+						} else if msg.Delivered {
+							status = " ✓"
+						}
+					}
+
+					fmt.Printf("[%s] %s: %s%s\n", timestamp, sender, msg.Content, status)
+				}
+				fmt.Println()
+			}
+
+			// Mark messages as read
+			if err := a.messageManager.MarkAsRead(ctx, currentUser, otherUsername); err != nil {
+				fmt.Printf("Warning: Failed to mark messages as read: %v\n", err)
+			}
+
+		case "unread":
+			if !a.auth.IsAuthenticated() {
+				fmt.Println("You must be logged in to view unread messages")
+				break
+			}
+
+			currentUser, _ := a.auth.CurrentUser()
+
+			// Get all friends
+			friends, err := a.friendManager.GetFriends(ctx, currentUser.ID)
+			if err != nil {
+				fmt.Printf("Failed to get friends: %v\n", err)
+				break
+			}
+
+			hasUnread := false
+			for _, friend := range friends {
+				// Get messages with this friend
+				messages, err := a.messageManager.GetConversation(ctx, currentUser.ID, friend.FriendID, 50)
+				if err != nil {
+					continue
+				}
+
+				unreadCount := 0
+				for _, msg := range messages {
+					if msg.ToUserID == currentUser.ID && !msg.Read {
+						unreadCount++
+					}
+				}
+
+				if unreadCount > 0 {
+					if !hasUnread {
+						fmt.Println("\n=== Unread Messages ===")
+						hasUnread = true
+					}
+					fmt.Printf("%s (%s): %d unread message(s)\n", friend.FullName, friend.Username, unreadCount)
+				}
+			}
+
+			if !hasUnread {
+				fmt.Println("No unread messages")
+			} else {
+				fmt.Println("\nUse 'history <username>' to read messages")
+			}
+
 		case "help":
 			a.showHelp()
 
@@ -432,6 +574,11 @@ func (a *App) showHelp() {
 	fmt.Println("  reject <username>                           - Reject friend request")
 	fmt.Println("  friends                                     - List your friends")
 	fmt.Println("  requests                                    - View pending friend requests")
+	fmt.Println()
+	fmt.Println("=== Messaging Commands ===")
+	fmt.Println("  msg <username> <message>                    - Send a direct message")
+	fmt.Println("  history <username> [limit]                  - View message history")
+	fmt.Println("  unread                                      - Show unread messages")
 	fmt.Println()
 	fmt.Println("=== P2P Commands ===")
 	fmt.Println("  connect <multiaddr>                         - Connect to a peer")
