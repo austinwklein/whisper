@@ -48,7 +48,8 @@ func isPortAvailable(port int) bool {
 	if port == 0 {
 		return true // Port 0 means auto-select
 	}
-	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	// Try to bind to 0.0.0.0 (all interfaces) to match how libp2p binds
+	addr := fmt.Sprintf("0.0.0.0:%d", port)
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return false
