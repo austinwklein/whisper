@@ -475,7 +475,11 @@ func (a *App) commandLoop(ctx context.Context) {
 			}
 
 			// Auto-send friend request
-			currentUser, _ := a.auth.CurrentUser()
+			currentUser, err := a.auth.CurrentUser()
+			if err != nil {
+				fmt.Println("Note: Please login first to send friend request")
+				break
+			}
 			fmt.Printf("Automatically sending friend request to %s...\n", targetPeerID.String()[:16]+"...")
 			err = a.friendManager.SendFriendRequest(ctx, currentUser, targetPeerID)
 			if err != nil {

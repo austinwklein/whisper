@@ -115,7 +115,11 @@ func (m *Manager) SendFriendRequest(ctx context.Context, currentUser *storage.Us
 		return fmt.Errorf("failed to send friend request: %w", err)
 	}
 
-	fmt.Printf("✓ Friend request sent to %s (%s)\n", targetUser.FullName, targetUser.Username)
+	if targetUser != nil {
+		fmt.Printf("✓ Friend request sent to %s (%s)\n", targetUser.FullName, targetUser.Username)
+	} else {
+		fmt.Printf("✓ Friend request sent to peer %s\n", targetPeerID.String()[:16]+"...")
+	}
 	return nil
 }
 
