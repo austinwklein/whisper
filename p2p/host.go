@@ -3,6 +3,7 @@ package p2p
 import (
 	"context"
 	"fmt"
+	"net"
 	"sync"
 
 	"github.com/libp2p/go-libp2p"
@@ -42,6 +43,20 @@ type PeerInfo struct {
 	Username  string // Will be populated after user identification
 }
 
+// isPortAvailable checks if a TCP port is available
+func isPortAvailable(port int) bool {
+	if port == 0 {
+		return true // Port 0 means auto-select
+	}
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return false
+	}
+	listener.Close()
+	return true
+}
+
 // NewP2PHost creates a new P2P host instance
 func NewP2PHost(ctx context.Context, port int, privKey crypto.PrivKey) (*P2PHost, error) {
 	// Generate a new identity if not provided
@@ -51,6 +66,12 @@ func NewP2PHost(ctx context.Context, port int, privKey crypto.PrivKey) (*P2PHost
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate key pair: %w", err)
 		}
+	}
+
+	// Check if requested port is available
+	if !isPortAvailable(port) {
+		fmt.Printf("Port %d is already in use, selecting an available port automatically...\n", port)
+		port = 0 // Let OS select an available port
 	}
 
 	// Create listen address
@@ -67,22 +88,7 @@ func NewP2PHost(ctx context.Context, port int, privKey crypto.PrivKey) (*P2PHost
 		libp2p.NATPortMap(),
 	)
 	if err != nil {
-		// If specified port is in use and not 0, try with port 0 (auto-select)
-		if port != 0 {
-			fmt.Printf("Port %d in use, trying automatic port selection...\n", port)
-			listenAddr = "/ip4/0.0.0.0/tcp/0"
-			h, err = libp2p.New(
-				libp2p.Identity(privKey),
-				libp2p.ListenAddrStrings(listenAddr),
-				libp2p.DefaultTransports,
-				libp2p.DefaultMuxers,
-				libp2p.DefaultSecurity,
-				libp2p.NATPortMap(),
-			)
-		}
-		if err != nil {
-			return nil, fmt.Errorf("failed to create libp2p host: %w", err)
-		}
+		return nil, fmt.Errorf("failed to create libp2p host: %w", err)
 	}
 
 	// Create DHT for peer discovery
