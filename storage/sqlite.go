@@ -255,12 +255,16 @@ func (s *SQLiteStorage) CreateFriendRequest(ctx context.Context, friend *Friend)
 
 func (s *SQLiteStorage) GetFriendRequest(ctx context.Context, userID, friendID int64) (*Friend, error) {
 	friend := &Friend{}
+	var acceptedAt sql.NullTime
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, user_id, friend_id, peer_id, username, full_name, status, created_at, accepted_at
 		FROM friends WHERE user_id = ? AND friend_id = ?
-	`, userID, friendID).Scan(&friend.ID, &friend.UserID, &friend.FriendID, &friend.PeerID, &friend.Username, &friend.FullName, &friend.Status, &friend.CreatedAt, &friend.AcceptedAt)
+	`, userID, friendID).Scan(&friend.ID, &friend.UserID, &friend.FriendID, &friend.PeerID, &friend.Username, &friend.FullName, &friend.Status, &friend.CreatedAt, &acceptedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
+	}
+	if acceptedAt.Valid {
+		friend.AcceptedAt = acceptedAt.Time
 	}
 	return friend, err
 }
@@ -286,8 +290,12 @@ func (s *SQLiteStorage) GetFriends(ctx context.Context, userID int64) ([]*Friend
 	friends := []*Friend{}
 	for rows.Next() {
 		friend := &Friend{}
-		if err := rows.Scan(&friend.ID, &friend.UserID, &friend.FriendID, &friend.PeerID, &friend.Username, &friend.FullName, &friend.Status, &friend.CreatedAt, &friend.AcceptedAt); err != nil {
+		var acceptedAt sql.NullTime
+		if err := rows.Scan(&friend.ID, &friend.UserID, &friend.FriendID, &friend.PeerID, &friend.Username, &friend.FullName, &friend.Status, &friend.CreatedAt, &acceptedAt); err != nil {
 			return nil, err
+		}
+		if acceptedAt.Valid {
+			friend.AcceptedAt = acceptedAt.Time
 		}
 		friends = append(friends, friend)
 	}
@@ -307,8 +315,12 @@ func (s *SQLiteStorage) GetPendingFriendRequests(ctx context.Context, userID int
 	requests := []*Friend{}
 	for rows.Next() {
 		friend := &Friend{}
-		if err := rows.Scan(&friend.ID, &friend.UserID, &friend.FriendID, &friend.PeerID, &friend.Username, &friend.FullName, &friend.Status, &friend.CreatedAt, &friend.AcceptedAt); err != nil {
+		var acceptedAt sql.NullTime
+		if err := rows.Scan(&friend.ID, &friend.UserID, &friend.FriendID, &friend.PeerID, &friend.Username, &friend.FullName, &friend.Status, &friend.CreatedAt, &acceptedAt); err != nil {
 			return nil, err
+		}
+		if acceptedAt.Valid {
+			friend.AcceptedAt = acceptedAt.Time
 		}
 		requests = append(requests, friend)
 	}

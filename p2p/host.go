@@ -112,6 +112,11 @@ func (p *P2PHost) PeerID() peer.ID {
 	return p.host.ID()
 }
 
+// Host returns the underlying libp2p host
+func (p *P2PHost) Host() host.Host {
+	return p.host
+}
+
 // Addrs returns the local multiaddresses
 func (p *P2PHost) Addrs() []multiaddr.Multiaddr {
 	return p.host.Addrs()

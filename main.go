@@ -12,15 +12,18 @@ import (
 
 	"github.com/austinwklein/whisper/auth"
 	"github.com/austinwklein/whisper/config"
+	"github.com/austinwklein/whisper/friends"
 	"github.com/austinwklein/whisper/p2p"
 	"github.com/austinwklein/whisper/storage"
+	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 type App struct {
-	config  *config.Config
-	storage storage.Storage
-	p2p     *p2p.P2PHost
-	auth    *auth.AuthService
+	config        *config.Config
+	storage       storage.Storage
+	p2p           *p2p.P2PHost
+	auth          *auth.AuthService
+	friendManager *friends.Manager
 }
 
 func main() {
@@ -50,12 +53,16 @@ func main() {
 	// Initialize auth service
 	authService := auth.NewAuthService(store)
 
+	// Initialize friend manager
+	friendManager := friends.NewManager(store, p2pHost.Host())
+
 	// Create app
 	app := &App{
-		config:  cfg,
-		storage: store,
-		p2p:     p2pHost,
-		auth:    authService,
+		config:        cfg,
+		storage:       store,
+		p2p:           p2pHost,
+		auth:          authService,
+		friendManager: friendManager,
 	}
 
 	// Start app services
@@ -90,8 +97,7 @@ func main() {
 }
 
 func (a *App) Start(ctx context.Context) error {
-	// Initialize DHT, GossipSub, etc.
-	// This will be expanded in future phases
+	// Future: Initialize additional services
 	return nil
 }
 
@@ -118,9 +124,7 @@ func (a *App) commandLoop(ctx context.Context) {
 			}
 			username := parts[1]
 			password := parts[2]
-			// Join remaining parts as full name
 			fullName := strings.Join(parts[3:], " ")
-			// Remove quotes if present
 			fullName = strings.Trim(fullName, "\"")
 
 			peerID := a.p2p.PeerID().String()
@@ -144,6 +148,16 @@ func (a *App) commandLoop(ctx context.Context) {
 				fmt.Printf("Login failed: %v\n", err)
 			} else {
 				fmt.Printf("✓ Welcome back, %s!\n", user.FullName)
+				// Set current user for friend manager
+				a.friendManager.SetCurrentUser(user.ID)
+				// Publish user to DHT
+				go func() {
+					if err := a.p2p.PublishUser(ctx, username); err != nil {
+						fmt.Printf("Warning: Failed to publish to DHT: %v\n", err)
+					}
+					// Keep refreshing presence
+					a.p2p.RefreshUserPresence(ctx, username)
+				}()
 			}
 
 		case "logout":
@@ -153,6 +167,7 @@ func (a *App) commandLoop(ctx context.Context) {
 			}
 			user, _ := a.auth.CurrentUser()
 			a.auth.Logout()
+			a.friendManager.SetCurrentUser(0)
 			fmt.Printf("✓ Logged out %s\n", user.Username)
 
 		case "whoami":
@@ -212,6 +227,141 @@ func (a *App) commandLoop(ctx context.Context) {
 				}
 			}
 
+		case "add":
+			if !a.auth.IsAuthenticated() {
+				fmt.Println("You must be logged in to add friends")
+				break
+			}
+			if len(parts) < 2 {
+				fmt.Println("Usage: add <username>")
+				fmt.Println("Find users with: search <name>")
+				break
+			}
+			targetUsername := parts[1]
+
+			currentUser, _ := a.auth.CurrentUser()
+
+			// First, look up the user in DHT
+			fmt.Printf("Looking up %s in DHT...\n", targetUsername)
+			targetPeerID, err := a.p2p.FindUserByUsername(ctx, targetUsername)
+			if err != nil {
+				// Try local database as fallback
+				targetUser, dbErr := a.storage.GetUserByUsername(ctx, targetUsername)
+				if dbErr != nil || targetUser == nil {
+					fmt.Printf("User not found: %v\n", err)
+					fmt.Println("Tip: User must be online and registered")
+					break
+				}
+				targetPeerID, _ = peer.Decode(targetUser.PeerID)
+			}
+
+			// Connect to the peer if not already connected
+			fmt.Printf("Connecting to %s...\n", targetUsername)
+			err = a.p2p.ConnectToPeer(ctx, fmt.Sprintf("/p2p/%s", targetPeerID.String()))
+			if err != nil {
+				fmt.Printf("Warning: Could not connect directly: %v\n", err)
+				fmt.Println("Attempting to send request anyway...")
+			}
+
+			// Send friend request
+			err = a.friendManager.SendFriendRequest(ctx, currentUser, targetPeerID)
+			if err != nil {
+				fmt.Printf("Failed to send friend request: %v\n", err)
+			}
+
+		case "accept":
+			if !a.auth.IsAuthenticated() {
+				fmt.Println("You must be logged in to accept friend requests")
+				break
+			}
+			if len(parts) < 2 {
+				fmt.Println("Usage: accept <username>")
+				break
+			}
+			fromUsername := parts[1]
+			currentUser, _ := a.auth.CurrentUser()
+
+			err := a.friendManager.AcceptFriendRequest(ctx, currentUser, fromUsername)
+			if err != nil {
+				fmt.Printf("Failed to accept friend request: %v\n", err)
+			}
+
+		case "reject":
+			if !a.auth.IsAuthenticated() {
+				fmt.Println("You must be logged in to reject friend requests")
+				break
+			}
+			if len(parts) < 2 {
+				fmt.Println("Usage: reject <username>")
+				break
+			}
+			fromUsername := parts[1]
+			currentUser, _ := a.auth.CurrentUser()
+
+			err := a.friendManager.RejectFriendRequest(ctx, currentUser, fromUsername)
+			if err != nil {
+				fmt.Printf("Failed to reject friend request: %v\n", err)
+			}
+
+		case "friends":
+			if !a.auth.IsAuthenticated() {
+				fmt.Println("You must be logged in to view friends")
+				break
+			}
+			currentUser, _ := a.auth.CurrentUser()
+
+			friends, err := a.friendManager.GetFriends(ctx, currentUser.ID)
+			if err != nil {
+				fmt.Printf("Failed to get friends: %v\n", err)
+				break
+			}
+
+			if len(friends) == 0 {
+				fmt.Println("You don't have any friends yet")
+				fmt.Println("Use 'add <username>' to send friend requests")
+			} else {
+				fmt.Printf("Your friends (%d):\n", len(friends))
+				for i, friend := range friends {
+					// Check if friend is online
+					status := "offline"
+					connectedPeers := a.p2p.GetConnectedPeers()
+					for _, peer := range connectedPeers {
+						if peer.ID.String() == friend.PeerID {
+							status = "online"
+							break
+						}
+					}
+					statusIcon := "○"
+					if status == "online" {
+						statusIcon = "●"
+					}
+					fmt.Printf("  %d. %s %s (%s)\n", i+1, statusIcon, friend.FullName, friend.Username)
+				}
+			}
+
+		case "requests":
+			if !a.auth.IsAuthenticated() {
+				fmt.Println("You must be logged in to view friend requests")
+				break
+			}
+			currentUser, _ := a.auth.CurrentUser()
+
+			requests, err := a.friendManager.GetPendingRequests(ctx, currentUser.ID)
+			if err != nil {
+				fmt.Printf("Failed to get friend requests: %v\n", err)
+				break
+			}
+
+			if len(requests) == 0 {
+				fmt.Println("No pending friend requests")
+			} else {
+				fmt.Printf("Pending friend requests (%d):\n", len(requests))
+				for i, req := range requests {
+					fmt.Printf("  %d. %s (%s)\n", i+1, req.FullName, req.Username)
+				}
+				fmt.Println("\nUse 'accept <username>' or 'reject <username>'")
+			}
+
 		case "connect":
 			if len(parts) < 2 {
 				fmt.Println("Usage: connect <multiaddr>")
@@ -266,6 +416,13 @@ func (a *App) showHelp() {
 	fmt.Println("  whoami                                      - Show current user info")
 	fmt.Println("  passwd <old-pass> <new-pass>               - Change your password")
 	fmt.Println("  search <name>                               - Search for users by name")
+	fmt.Println()
+	fmt.Println("=== Friend Commands ===")
+	fmt.Println("  add <username>                              - Send friend request")
+	fmt.Println("  accept <username>                           - Accept friend request")
+	fmt.Println("  reject <username>                           - Reject friend request")
+	fmt.Println("  friends                                     - List your friends")
+	fmt.Println("  requests                                    - View pending friend requests")
 	fmt.Println()
 	fmt.Println("=== P2P Commands ===")
 	fmt.Println("  connect <multiaddr>                         - Connect to a peer")
