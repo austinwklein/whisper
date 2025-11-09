@@ -131,15 +131,18 @@ func (m *Manager) handleIncomingMessage(message *DirectMessage, fromPeer peer.ID
 
 	// Look up sender
 	fromUser, err := m.storage.GetUserByUsername(ctx, message.FromUsername)
-	if err != nil {
+	if err != nil || fromUser == nil {
 		fmt.Printf("Error: Message from unknown user %s\n", message.FromUsername)
 		return
 	}
 
 	// Look up recipient (should be current user)
 	toUser, err := m.storage.GetUserByUsername(ctx, message.ToUsername)
-	if err != nil {
-		fmt.Printf("Error: Message to unknown user %s\n", message.ToUsername)
+	if err != nil || toUser == nil {
+		fmt.Printf("\n📨 Incoming message for %s, but you're not logged in as that user\n", message.ToUsername)
+		fmt.Printf("   From: %s\n", message.FromUsername)
+		fmt.Printf("   Please login to receive messages\n")
+		fmt.Print("> ")
 		return
 	}
 
