@@ -1,17 +1,25 @@
-.PHONY: build build-dev run dev test clean fmt lint clean-db clean-db-dev reset reset-dev
+.PHONY: build build-dev build-gui run dev test clean fmt lint clean-db clean-db-dev reset reset-dev
 
-# Build the application (production mode - uses ~/.whisper/whisper.db)
+# Build the CLI application (production mode - uses ~/.whisper/whisper.db)
 build:
-	go build -o whisper .
+	go build -tags '!gui' -o whisper .
 
-# Build in dev mode (uses ./data/whisper.db in current directory)
+# Build the GUI application (macOS .app bundle)
+build-gui:
+	wails build -tags gui
+
+# Build CLI in dev mode (uses ./data/whisper.db in current directory)
 build-dev:
-	go build -ldflags "-X 'github.com/austinwklein/whisper/config.DefaultDBPath=./data/whisper.db'" -o whisper .
+	go build -tags '!gui' -ldflags "-X 'github.com/austinwklein/whisper/config.DefaultDBPath=./data/whisper.db'" -o whisper .
 	@echo "Built in DEV mode - database will be at ./data/whisper.db"
 
-# Run in development mode with go run
+# Run GUI in development mode
+dev-gui:
+	wails dev -tags gui
+
+# Run CLI in development mode with go run
 dev:
-	go run main.go
+	go run -tags '!gui' main_cli.go
 
 # Run the application
 run: build
@@ -37,6 +45,9 @@ lint:
 clean:
 	rm -f whisper
 	rm -rf logs/*
+	rm -rf build/bin/*
+	rm -rf frontend/dist
+	rm -rf frontend/node_modules/.vite
 
 # Clean database (production)
 clean-db:
