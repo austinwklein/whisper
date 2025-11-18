@@ -5,19 +5,9 @@
   "frontend:install": "npm install",
   "frontend:build": "npm run build",
   "frontend:dev:watcher": "npm run dev",
-  "frontend:dev:serverUrl": "http://localhost:5173",
+  "frontend:dev:serverUrl": "auto",
   "author": {
     "name": "Austin Klein",
     "email": "awklein@alaska.edu"
-  },
-  "info": {
-    "companyName": "Whisper",
-    "productName": "Whisper P2P Chat",
-    "productVersion": "1.0.0",
-    "copyright": "Copyright © 2025 Austin Klein",
-    "comments": "Decentralized peer-to-peer chat application"
-  },
-  "wailsjsdir": "./frontend/src",
-  "version": "2",
-  "outputType": "desktop"
+  }
 }

@@ -6,7 +6,7 @@ build:
 
 # Build the GUI application (macOS .app bundle)
 build-gui:
-	wails build -tags gui
+	~/go/bin/wails build -tags gui
 
 # Build CLI in dev mode (uses ./data/whisper.db in current directory)
 build-dev:
@@ -15,7 +15,7 @@ build-dev:
 
 # Run GUI in development mode
 dev-gui:
-	wails dev -tags gui
+	~/go/bin/wails dev -tags gui
 
 # Run CLI in development mode with go run
 dev:
