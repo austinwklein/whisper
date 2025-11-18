@@ -92,14 +92,18 @@ func NewP2PHost(ctx context.Context, port int, privKey crypto.PrivKey) (*P2PHost
 	// If port is 0, libp2p will automatically select an available port
 	listenAddr := fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", port)
 
-	// Create libp2p host
+	// Create libp2p host with NAT traversal capabilities
 	h, err := libp2p.New(
 		libp2p.Identity(privKey),
 		libp2p.ListenAddrStrings(listenAddr),
 		libp2p.DefaultTransports,
 		libp2p.DefaultMuxers,
 		libp2p.DefaultSecurity,
-		libp2p.NATPortMap(),
+		libp2p.NATPortMap(),                                       // UPnP/NAT-PMP port mapping
+		libp2p.EnableNATService(),                                 // Help other peers determine their NAT status
+		libp2p.EnableAutoRelayWithStaticRelays([]peer.AddrInfo{}), // Enable auto relay (empty = use DHT discovered relays)
+		libp2p.EnableHolePunching(),                               // Enable hole punching for better NAT traversal
+		libp2p.EnableRelay(),                                      // Can use other peers as relays
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create libp2p host: %w", err)
