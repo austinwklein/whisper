@@ -145,13 +145,19 @@ func (a *App) GetFriends() ([]map[string]interface{}, error) {
 		return nil, fmt.Errorf("not logged in: %w", err)
 	}
 
+	fmt.Printf("DEBUG GetFriends: Current user = %s (ID: %d)\n", user.Username, user.ID)
+
 	friendsList, err := a.storage.GetFriends(a.ctx, user.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get friends: %w", err)
 	}
 
+	fmt.Printf("DEBUG GetFriends: Found %d friends\n", len(friendsList))
+
 	result := make([]map[string]interface{}, len(friendsList))
 	for i, friend := range friendsList {
+		fmt.Printf("DEBUG GetFriends: Friend %d: ID=%d, Username=%s, FullName=%s, Status=%s\n",
+			i, friend.ID, friend.Username, friend.FullName, friend.Status)
 		// Check if friend is online (connected to P2P network)
 		isOnline := false
 		if friend.PeerID != "" {

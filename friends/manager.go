@@ -171,9 +171,14 @@ func (m *Manager) AcceptFriendRequest(ctx context.Context, currentUser *storage.
 		AcceptedAt: now,
 	}
 
+	fmt.Printf("DEBUG: Creating reciprocal friendship: UserID=%d (%s) -> FriendID=%d (%s)\n",
+		reciprocalFriend.UserID, currentUser.Username, reciprocalFriend.FriendID, fromUser.Username)
+
 	if err := m.storage.CreateFriendRequest(ctx, reciprocalFriend); err != nil {
 		return fmt.Errorf("failed to create reciprocal friendship: %w", err)
 	}
+
+	fmt.Printf("DEBUG: Reciprocal friendship created successfully\n")
 
 	// Send acceptance notification
 	peerID, err := peer.Decode(fromUser.PeerID)
