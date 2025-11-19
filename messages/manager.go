@@ -163,11 +163,15 @@ func (m *Manager) SendMessage(ctx context.Context, currentUser *storage.User, to
 func (m *Manager) handleIncomingMessage(message *DirectMessage, fromPeer peer.ID) {
 	ctx := context.Background()
 
-	// Look up sender
+	// Look up sender - first by username, then by peer ID
 	fromUser, err := m.storage.GetUserByUsername(ctx, message.FromUsername)
 	if err != nil || fromUser == nil {
-		fmt.Printf("Error: Message from unknown user %s\n", message.FromUsername)
-		return
+		// Try looking up by peer ID (handles placeholder users)
+		fromUser, err = m.storage.GetUserByPeerID(ctx, message.FromPeerID)
+		if err != nil || fromUser == nil {
+			fmt.Printf("Error: Message from unknown user %s (peer: %s)\n", message.FromUsername, message.FromPeerID)
+			return
+		}
 	}
 
 	// Look up recipient (should be current user)
