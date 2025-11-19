@@ -48,17 +48,46 @@ func (m *Manager) SetCurrentUser(userID int64) {
 func (m *Manager) SendMessage(ctx context.Context, currentUser *storage.User, toUsername string, content string) error {
 	fmt.Printf("DEBUG SendMessage: Looking up user '%s'\n", toUsername)
 
-	// Look up recipient user
+	// Look up recipient user by username
 	toUser, err := m.storage.GetUserByUsername(ctx, toUsername)
 	if err != nil {
 		fmt.Printf("DEBUG SendMessage: GetUserByUsername error: %v\n", err)
 		return fmt.Errorf("user not found: %w", err)
 	}
 	if toUser == nil {
-		fmt.Printf("DEBUG SendMessage: User '%s' not found in users table\n", toUsername)
-		return fmt.Errorf("user '%s' not found - you must be friends first (use 'add %s' to send friend request)", toUsername, toUsername)
+		// Username lookup failed - try to find via friend record
+		fmt.Printf("DEBUG SendMessage: User '%s' not found by username, checking friends table\n", toUsername)
+
+		// Get friend record to find the FriendID
+		friends, err := m.storage.GetFriends(ctx, currentUser.ID)
+		if err != nil {
+			return fmt.Errorf("failed to get friends: %w", err)
+		}
+
+		// Find the friend with matching username
+		var friendUserID int64
+		for _, friend := range friends {
+			fmt.Printf("DEBUG SendMessage: Checking friend: FriendID=%d, Username=%s\n", friend.FriendID, friend.Username)
+			if friend.Username == toUsername {
+				friendUserID = friend.FriendID
+				break
+			}
+		}
+
+		if friendUserID == 0 {
+			return fmt.Errorf("user '%s' not found - you must be friends first", toUsername)
+		}
+
+		// Look up by ID instead
+		fmt.Printf("DEBUG SendMessage: Found friend record, looking up user by ID: %d\n", friendUserID)
+		toUser, err = m.storage.GetUserByID(ctx, friendUserID)
+		if err != nil || toUser == nil {
+			return fmt.Errorf("failed to get user by ID: %w", err)
+		}
+		fmt.Printf("DEBUG SendMessage: Found user by ID: Username=%s, PeerID=%s\n", toUser.Username, toUser.PeerID)
+	} else {
+		fmt.Printf("DEBUG SendMessage: Found user '%s' (ID: %d, PeerID: %s)\n", toUser.Username, toUser.ID, toUser.PeerID)
 	}
-	fmt.Printf("DEBUG SendMessage: Found user '%s' (ID: %d, PeerID: %s)\n", toUser.Username, toUser.ID, toUser.PeerID)
 
 	// Check if they are friends
 	friendship, err := m.storage.GetFriendRequest(ctx, currentUser.ID, toUser.ID)
