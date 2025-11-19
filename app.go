@@ -124,3 +124,199 @@ func (a *App) GetMultiaddr() string {
 	}
 	return ""
 }
+
+// Logout logs out the current user
+func (a *App) Logout() error {
+	a.auth.Logout()
+	return nil
+}
+
+// GetFriends returns the list of friends for the current user
+func (a *App) GetFriends() ([]map[string]interface{}, error) {
+	user, err := a.auth.CurrentUser()
+	if err != nil {
+		return nil, fmt.Errorf("not logged in: %w", err)
+	}
+
+	friendsList, err := a.storage.GetFriends(a.ctx, user.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get friends: %w", err)
+	}
+
+	result := make([]map[string]interface{}, len(friendsList))
+	for i, friend := range friendsList {
+		// Check if friend is online (connected to P2P network)
+		isOnline := false
+		if friend.PeerID != "" {
+			// Check if peer is in the peerstore and has open connections
+			peerID, err := p2p.ParsePeerID(friend.PeerID)
+			if err == nil {
+				conns := a.p2p.Host().Network().ConnsToPeer(peerID)
+				isOnline = len(conns) > 0
+			}
+		}
+
+		result[i] = map[string]interface{}{
+			"id":       friend.ID,
+			"username": friend.Username,
+			"fullName": friend.FullName,
+			"peerID":   friend.PeerID,
+			"status":   friend.Status,
+			"online":   isOnline,
+		}
+	}
+
+	return result, nil
+}
+
+// ConnectToPeer connects to a peer via their multiaddress
+func (a *App) ConnectToPeer(multiaddr string) error {
+	return a.p2p.ConnectToPeer(a.ctx, multiaddr)
+}
+
+// SendFriendRequest sends a friend request to a peer
+func (a *App) SendFriendRequest(multiaddr, username string) error {
+	user, err := a.auth.CurrentUser()
+	if err != nil {
+		return fmt.Errorf("not logged in: %w", err)
+	}
+
+	// First connect to the peer
+	if err := a.p2p.ConnectToPeer(a.ctx, multiaddr); err != nil {
+		return fmt.Errorf("failed to connect to peer: %w", err)
+	}
+
+	// Extract peer ID from multiaddress
+	peerID, err := p2p.ExtractPeerIDFromMultiaddr(multiaddr)
+	if err != nil {
+		return fmt.Errorf("invalid multiaddress: %w", err)
+	}
+
+	// Send friend request
+	if err := a.friendManager.SendFriendRequest(a.ctx, user, peerID); err != nil {
+		return fmt.Errorf("failed to send friend request: %w", err)
+	}
+
+	return nil
+}
+
+// GetFriendRequests returns pending friend requests
+func (a *App) GetFriendRequests() ([]map[string]interface{}, error) {
+	user, err := a.auth.CurrentUser()
+	if err != nil {
+		return nil, fmt.Errorf("not logged in: %w", err)
+	}
+
+	requests, err := a.storage.GetPendingFriendRequests(a.ctx, user.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get friend requests: %w", err)
+	}
+
+	result := make([]map[string]interface{}, len(requests))
+	for i, req := range requests {
+		result[i] = map[string]interface{}{
+			"id":       req.ID,
+			"username": req.Username,
+			"fullName": req.FullName,
+			"peerID":   req.PeerID,
+			"status":   req.Status,
+		}
+	}
+
+	return result, nil
+}
+
+// AcceptFriendRequest accepts a friend request
+func (a *App) AcceptFriendRequest(username string) error {
+	user, err := a.auth.CurrentUser()
+	if err != nil {
+		return fmt.Errorf("not logged in: %w", err)
+	}
+
+	return a.friendManager.AcceptFriendRequest(a.ctx, user, username)
+}
+
+// RejectFriendRequest rejects a friend request
+func (a *App) RejectFriendRequest(username string) error {
+	user, err := a.auth.CurrentUser()
+	if err != nil {
+		return fmt.Errorf("not logged in: %w", err)
+	}
+
+	return a.friendManager.RejectFriendRequest(a.ctx, user, username)
+}
+
+// SendMessage sends a direct message to a friend
+func (a *App) SendMessage(username, content string) error {
+	user, err := a.auth.CurrentUser()
+	if err != nil {
+		return fmt.Errorf("not logged in: %w", err)
+	}
+
+	return a.messageManager.SendMessage(a.ctx, user, username, content)
+}
+
+// GetMessages returns message history with a friend
+func (a *App) GetMessages(username string, limit int) ([]map[string]interface{}, error) {
+	user, err := a.auth.CurrentUser()
+	if err != nil {
+		return nil, fmt.Errorf("not logged in: %w", err)
+	}
+
+	if limit <= 0 {
+		limit = 50
+	}
+
+	// Get friend info
+	friend, err := a.storage.GetUserByUsername(a.ctx, username)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get friend: %w", err)
+	}
+	if friend == nil {
+		return nil, fmt.Errorf("friend not found")
+	}
+
+	// Use GetMessages instead of GetMessageHistory
+	messages, err := a.storage.GetMessages(a.ctx, user.ID, friend.ID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get messages: %w", err)
+	}
+
+	result := make([]map[string]interface{}, len(messages))
+	for i, msg := range messages {
+		result[i] = map[string]interface{}{
+			"id":        msg.ID,
+			"content":   msg.Content,
+			"fromMe":    msg.FromUserID == user.ID,
+			"delivered": msg.Delivered,
+			"read":      msg.Read,
+			"createdAt": msg.CreatedAt.Format("2006-01-02 15:04:05"),
+		}
+	}
+
+	return result, nil
+}
+
+// GetUnreadCount returns the count of unread messages
+func (a *App) GetUnreadCount() (int, error) {
+	user, err := a.auth.CurrentUser()
+	if err != nil {
+		return 0, fmt.Errorf("not logged in: %w", err)
+	}
+
+	// Get all undelivered messages to the user
+	messages, err := a.storage.GetUndeliveredMessages(a.ctx, user.ID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get unread messages: %w", err)
+	}
+
+	// Count messages that are unread
+	count := 0
+	for _, msg := range messages {
+		if !msg.Read {
+			count++
+		}
+	}
+
+	return count, nil
+}

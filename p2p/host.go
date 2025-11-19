@@ -290,3 +290,23 @@ func (n *discoveryNotifee) HandlePeerFound(peerInfo peer.AddrInfo) {
 		fmt.Printf("Connected to peer via mDNS: %s\n", peerInfo.ID)
 	}
 }
+
+// ParsePeerID parses a peer ID string into a peer.ID
+func ParsePeerID(peerIDStr string) (peer.ID, error) {
+	return peer.Decode(peerIDStr)
+}
+
+// ExtractPeerIDFromMultiaddr extracts the peer ID from a multiaddress string
+func ExtractPeerIDFromMultiaddr(addrStr string) (peer.ID, error) {
+	maddr, err := multiaddr.NewMultiaddr(addrStr)
+	if err != nil {
+		return "", fmt.Errorf("invalid multiaddress: %w", err)
+	}
+
+	addrInfo, err := peer.AddrInfoFromP2pAddr(maddr)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse peer info: %w", err)
+	}
+
+	return addrInfo.ID, nil
+}
