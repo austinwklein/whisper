@@ -9,5 +9,26 @@
   "author": {
     "name": "Austin Klein",
     "email": "awklein@alaska.edu"
-  }
+  },
+  "info": {
+    "companyName": "Austin Klein",
+    "productName": "Whisper",
+    "productVersion": "0.1.0",
+    "copyright": "Copyright 2025",
+    "comments": "Decentralized P2P Chat Application"
+  },
+  "wails:targets": [
+    {
+      "platform": "darwin",
+      "arch": "arm64"
+    },
+    {
+      "platform": "darwin",
+      "arch": "amd64"
+    },
+    {
+      "platform": "linux",
+      "arch": "amd64"
+    }
+  ]
 }
