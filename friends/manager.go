@@ -83,9 +83,19 @@ func (m *Manager) SendFriendRequest(ctx context.Context, currentUser *storage.Us
 			PeerID:       targetPeerID.String(),
 		}
 		if err := m.storage.CreateUser(ctx, targetUser); err != nil {
-			return fmt.Errorf("failed to create placeholder user: %w", err)
+			// If creation fails, it might be a race condition or duplicate
+			// Try to fetch the user again by peer ID
+			fmt.Printf("DEBUG SendFriendRequest: CreateUser failed (%v), retrying lookup\n", err)
+			targetUser, err = m.storage.GetUserByPeerID(ctx, targetPeerID.String())
+			if err != nil || targetUser == nil {
+				return fmt.Errorf("failed to create or retrieve placeholder user: %w", err)
+			}
+			fmt.Printf("DEBUG SendFriendRequest: Found existing user after retry (ID: %d, Username: %s)\n", targetUser.ID, targetUser.Username)
+		} else {
+			fmt.Printf("DEBUG SendFriendRequest: Created placeholder user (ID: %d, Username: %s)\n", targetUser.ID, targetUser.Username)
 		}
-		fmt.Printf("DEBUG SendFriendRequest: Created placeholder user (ID: %d, Username: %s)\n", targetUser.ID, targetUser.Username)
+	} else {
+		fmt.Printf("DEBUG SendFriendRequest: Found existing user (ID: %d, Username: %s)\n", targetUser.ID, targetUser.Username)
 	}
 
 	// Check if already friends or request pending
