@@ -163,26 +163,41 @@ func (m *Manager) SendMessage(ctx context.Context, currentUser *storage.User, to
 func (m *Manager) handleIncomingMessage(message *DirectMessage, fromPeer peer.ID) {
 	ctx := context.Background()
 
+	fmt.Printf("DEBUG handleIncomingMessage: Received message from %s to %s\n", message.FromUsername, message.ToUsername)
+	fmt.Printf("DEBUG handleIncomingMessage: Current user ID = %d\n", m.currentUserID)
+
 	// Look up sender - first by username, then by peer ID
 	fromUser, err := m.storage.GetUserByUsername(ctx, message.FromUsername)
 	if err != nil || fromUser == nil {
 		// Try looking up by peer ID (handles placeholder users)
+		fmt.Printf("DEBUG handleIncomingMessage: Sender '%s' not found by username, trying peer ID\n", message.FromUsername)
 		fromUser, err = m.storage.GetUserByPeerID(ctx, message.FromPeerID)
 		if err != nil || fromUser == nil {
 			fmt.Printf("Error: Message from unknown user %s (peer: %s)\n", message.FromUsername, message.FromPeerID)
 			return
 		}
+		fmt.Printf("DEBUG handleIncomingMessage: Found sender by peer ID: %s (ID: %d)\n", fromUser.Username, fromUser.ID)
 	}
 
-	// Look up recipient (should be current user)
-	toUser, err := m.storage.GetUserByUsername(ctx, message.ToUsername)
-	if err != nil || toUser == nil {
-		fmt.Printf("\n📨 Incoming message for %s, but you're not logged in as that user\n", message.ToUsername)
+	// Look up recipient (should be current user) - use current user ID instead of username lookup
+	if m.currentUserID == 0 {
+		fmt.Printf("\n📨 Incoming message for %s, but no user is logged in\n", message.ToUsername)
 		fmt.Printf("   From: %s\n", message.FromUsername)
 		fmt.Printf("   Please login to receive messages\n")
 		fmt.Print("> ")
 		return
 	}
+
+	toUser, err := m.storage.GetUserByID(ctx, m.currentUserID)
+	if err != nil || toUser == nil {
+		fmt.Printf("\n📨 Incoming message for %s, but failed to lookup current user (ID: %d)\n", message.ToUsername, m.currentUserID)
+		fmt.Printf("   From: %s\n", message.FromUsername)
+		fmt.Printf("   Error: %v\n", err)
+		fmt.Print("> ")
+		return
+	}
+
+	fmt.Printf("DEBUG handleIncomingMessage: Recipient is current user: %s (ID: %d)\n", toUser.Username, toUser.ID)
 
 	// Save message
 	msg := &storage.Message{
