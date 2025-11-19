@@ -271,9 +271,9 @@ func (s *SQLiteStorage) GetFriendRequest(ctx context.Context, userID, friendID i
 
 func (s *SQLiteStorage) UpdateFriendRequest(ctx context.Context, friend *Friend) error {
 	_, err := s.db.ExecContext(ctx, `
-		UPDATE friends SET status = ?, accepted_at = ?
+		UPDATE friends SET status = ?, accepted_at = ?, username = ?, full_name = ?
 		WHERE id = ?
-	`, friend.Status, friend.AcceptedAt, friend.ID)
+	`, friend.Status, friend.AcceptedAt, friend.Username, friend.FullName, friend.ID)
 	return err
 }
 
