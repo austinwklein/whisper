@@ -311,14 +311,20 @@ func (m *Manager) handleIncomingRequest(request *FriendRequestMessage, fromPeer 
 		}
 
 		// Create friend request
+		// IMPORTANT: Store the requester's info (fromUser) in username/fullname fields
+		// This is what will be displayed to the recipient
 		friendReq := &storage.Friend{
-			UserID:   fromUser.ID,
-			FriendID: currentUser.ID,
-			PeerID:   fromUser.PeerID,
-			Username: fromUser.Username,
-			FullName: fromUser.FullName,
+			UserID:   fromUser.ID,       // ID of requester (e.g., Bob's ID)
+			FriendID: currentUser.ID,    // ID of recipient (e.g., Alice's ID)
+			PeerID:   fromUser.PeerID,   // PeerID of requester
+			Username: fromUser.Username, // Username of requester (e.g., "bob")
+			FullName: fromUser.FullName, // Full name of requester (e.g., "Bob Jones")
 			Status:   "pending",
 		}
+
+		fmt.Printf("DEBUG: Creating friend request: UserID=%d (%s), FriendID=%d (%s), Username=%s, FullName=%s\n",
+			friendReq.UserID, fromUser.Username, friendReq.FriendID, currentUser.Username,
+			friendReq.Username, friendReq.FullName)
 
 		if err := m.storage.CreateFriendRequest(ctx, friendReq); err != nil {
 			fmt.Printf("Error saving friend request: %v\n", err)
