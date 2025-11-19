@@ -61,10 +61,12 @@
     // Refresh friends and messages every 3 seconds
     refreshInterval = setInterval(async () => {
       if (isLoggedIn) {
+        console.log('DEBUG autoRefresh: Running refresh cycle');
         await refreshFriends();
         await refreshFriendRequests();
         await refreshUnreadCount();
         if (selectedFriend) {
+          console.log('DEBUG autoRefresh: Refreshing messages for', selectedFriend.username);
           await loadMessages(selectedFriend.username);
         }
       }
@@ -253,7 +255,9 @@
 
   async function loadMessages(friendUsername) {
     try {
+      console.log('DEBUG loadMessages: Loading messages for', friendUsername);
       messages = await GetMessages(friendUsername, 50);
+      console.log('DEBUG loadMessages: Loaded', messages.length, 'messages');
     } catch (e) {
       console.error('Failed to load messages:', e);
       error = 'Failed to load messages: ' + e.toString();

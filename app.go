@@ -288,23 +288,60 @@ func (a *App) GetMessages(username string, limit int) ([]map[string]interface{},
 		limit = 50
 	}
 
-	// Get friend info
+	fmt.Printf("DEBUG GetMessages: Current user = %s (ID: %d), looking up friend '%s'\n", user.Username, user.ID, username)
+
+	// Get friend info - first try direct lookup
 	friend, err := a.storage.GetUserByUsername(a.ctx, username)
 	if err != nil {
+		fmt.Printf("DEBUG GetMessages: GetUserByUsername error: %v\n", err)
 		return nil, fmt.Errorf("failed to get friend: %w", err)
 	}
 	if friend == nil {
-		return nil, fmt.Errorf("friend not found")
+		fmt.Printf("DEBUG GetMessages: Friend '%s' not found by username, checking friends table\n", username)
+		// Try to find via friend record
+		friends, err := a.storage.GetFriends(a.ctx, user.ID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get friends: %w", err)
+		}
+
+		// Find the friend with matching username
+		var friendUserID int64
+		for _, f := range friends {
+			fmt.Printf("DEBUG GetMessages: Checking friend: FriendID=%d, Username=%s\n", f.FriendID, f.Username)
+			if f.Username == username {
+				friendUserID = f.FriendID
+				break
+			}
+		}
+
+		if friendUserID == 0 {
+			return nil, fmt.Errorf("friend '%s' not found", username)
+		}
+
+		// Look up by ID instead
+		fmt.Printf("DEBUG GetMessages: Found friend record, looking up user by ID: %d\n", friendUserID)
+		friend, err = a.storage.GetUserByID(a.ctx, friendUserID)
+		if err != nil || friend == nil {
+			return nil, fmt.Errorf("failed to get user by ID: %w", err)
+		}
+		fmt.Printf("DEBUG GetMessages: Found user by ID: Username=%s, ID=%d\n", friend.Username, friend.ID)
+	} else {
+		fmt.Printf("DEBUG GetMessages: Found friend '%s' (ID: %d)\n", friend.Username, friend.ID)
 	}
 
 	// Use GetMessages instead of GetMessageHistory
+	fmt.Printf("DEBUG GetMessages: Querying messages between user.ID=%d and friend.ID=%d\n", user.ID, friend.ID)
 	messages, err := a.storage.GetMessages(a.ctx, user.ID, friend.ID, limit)
 	if err != nil {
+		fmt.Printf("DEBUG GetMessages: Query error: %v\n", err)
 		return nil, fmt.Errorf("failed to get messages: %w", err)
 	}
 
+	fmt.Printf("DEBUG GetMessages: Found %d messages\n", len(messages))
+
 	result := make([]map[string]interface{}, len(messages))
 	for i, msg := range messages {
+		fmt.Printf("DEBUG GetMessages: Message %d: FromUserID=%d, ToUserID=%d, Content=%s\n", i, msg.FromUserID, msg.ToUserID, msg.Content)
 		result[i] = map[string]interface{}{
 			"id":        msg.ID,
 			"content":   msg.Content,
