@@ -87,6 +87,10 @@ func (a *App) Login(username, password string) error {
 		return fmt.Errorf("failed to update peer ID: %w", err)
 	}
 
+	// Set current user in managers
+	a.friendManager.SetCurrentUser(user.ID)
+	a.messageManager.SetCurrentUser(user.ID)
+
 	return nil
 }
 
@@ -128,6 +132,9 @@ func (a *App) GetMultiaddr() string {
 // Logout logs out the current user
 func (a *App) Logout() error {
 	a.auth.Logout()
+	// Clear current user from managers
+	a.friendManager.SetCurrentUser(0)
+	a.messageManager.SetCurrentUser(0)
 	return nil
 }
 
