@@ -213,9 +213,9 @@ func (s *SQLiteStorage) GetUserByPeerID(ctx context.Context, peerID string) (*Us
 func (s *SQLiteStorage) UpdateUser(ctx context.Context, user *User) error {
 	user.UpdatedAt = time.Now()
 	_, err := s.db.ExecContext(ctx, `
-		UPDATE users SET password_hash = ?, full_name = ?, peer_id = ?, updated_at = ?
+		UPDATE users SET username = ?, password_hash = ?, full_name = ?, peer_id = ?, updated_at = ?
 		WHERE id = ?
-	`, user.PasswordHash, user.FullName, user.PeerID, user.UpdatedAt, user.ID)
+	`, user.Username, user.PasswordHash, user.FullName, user.PeerID, user.UpdatedAt, user.ID)
 	return err
 }
 

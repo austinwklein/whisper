@@ -74,8 +74,8 @@ func (m *Manager) SendFriendRequest(ctx context.Context, currentUser *storage.Us
 	if err != nil || targetUser == nil {
 		fmt.Printf("DEBUG SendFriendRequest: Target user not in DB, creating placeholder\n")
 		// Create a placeholder user record - will be updated when they respond
-		// Use peer ID as temporary username to avoid conflicts
-		placeholderUsername := fmt.Sprintf("unknown_%s", targetPeerID.String()[:8])
+		// Use full peer ID as temporary username to avoid conflicts (peer IDs are unique)
+		placeholderUsername := fmt.Sprintf("unknown_%s", targetPeerID.String())
 		targetUser = &storage.User{
 			Username:     placeholderUsername, // Temporary unique username
 			PasswordHash: "P2P_REMOTE_USER",
