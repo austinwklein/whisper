@@ -1,12 +1,22 @@
-.PHONY: build build-dev build-gui run dev test clean fmt lint clean-db clean-db-dev reset reset-dev
+.PHONY: build build-dev build-gui build-gui-frontend run dev test clean fmt lint clean-db clean-db-dev reset reset-dev clean-all setup
+
+# Detect wails binary location
+WAILS := $(shell which wails 2>/dev/null || echo "$$HOME/go/bin/wails")
 
 # Build the CLI application (production mode - uses ~/.whisper/whisper.db)
 build:
 	go build -tags '!gui' -o whisper .
 
-# Build the GUI application (macOS .app bundle)
-build-gui:
-	~/go/bin/wails build -tags gui
+# Build frontend for GUI (run before build-gui)
+build-gui-frontend:
+	@echo "Building frontend assets..."
+	@mkdir -p frontend/dist
+	cd frontend && npm install --legacy-peer-deps && npm run build
+
+# Build the GUI application (with frontend pre-build)
+build-gui: build-gui-frontend
+	@echo "Building GUI application..."
+	$(WAILS) build -tags gui
 
 # Build CLI in dev mode (uses ./data/whisper.db in current directory)
 build-dev:
@@ -15,7 +25,7 @@ build-dev:
 
 # Run GUI in development mode
 dev-gui:
-	~/go/bin/wails dev -tags gui
+	$(WAILS) dev -tags gui
 
 # Run CLI in development mode with go run
 dev:
@@ -48,26 +58,35 @@ clean:
 	rm -rf build/bin/*
 	rm -rf frontend/dist
 	rm -rf frontend/node_modules/.vite
+	@echo "Build artifacts cleaned"
+
+# Clean everything including node_modules (use before switching machines)
+clean-all: clean clean-db
+	rm -rf frontend/node_modules
+	@echo "All artifacts and dependencies cleaned"
 
 # Clean database (production)
 clean-db:
 	rm -rf ~/.whisper
-	@echo "Database cleaned"
+	@echo "Production database cleaned (~/.whisper)"
 
 # Clean database (dev mode)
 clean-db-dev:
 	rm -rf ./data
-	@echo "Dev database cleaned"
+	@echo "Dev database cleaned (./data)"
 
 # Reset everything (build artifacts + database)
 reset: clean clean-db
-	@echo "Full reset complete"
+	@echo "Full reset complete - ready for fresh build"
 
 # Reset for dev mode
 reset-dev: clean clean-db-dev
-	@echo "Dev reset complete"
+	@echo "Dev reset complete - ready for fresh build"
 
 # Setup dev environment
 setup:
+	@echo "Setting up development environment..."
 	go mod download
 	go mod tidy
+	cd frontend && npm install --legacy-peer-deps
+	@echo "Setup complete!"

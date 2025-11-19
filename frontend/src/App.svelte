@@ -96,6 +96,7 @@
   async function refreshFriendRequests() {
     try {
       friendRequests = await GetFriendRequests();
+      console.log('DEBUG: Friend requests:', friendRequests);
     } catch (e) {
       console.error('Failed to refresh friend requests:', e);
     }
