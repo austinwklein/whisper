@@ -88,6 +88,7 @@
   async function refreshFriends() {
     try {
       friends = await GetFriends();
+      console.log('DEBUG: Friends list updated:', friends);
     } catch (e) {
       console.error('Failed to refresh friends:', e);
     }
@@ -224,11 +225,14 @@
   async function handleAcceptRequest(username) {
     try {
       await AcceptFriendRequest(username);
+      // Refresh both requests and friends list
       await refreshFriendRequests();
       await refreshFriends();
-      alert(`Friend request from ${username} accepted!`);
+      console.log('DEBUG: After accept, friends:', friends);
+      alert(`Friend request from ${username} accepted! You are now friends.`);
     } catch (e) {
       error = 'Failed to accept friend request: ' + e.toString();
+      console.error('Accept error:', e);
     }
   }
 
