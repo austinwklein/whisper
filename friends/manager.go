@@ -364,20 +364,35 @@ func (m *Manager) handleIncomingAccept(response *FriendResponseMessage, fromPeer
 	fmt.Printf("DEBUG handleIncomingAccept: m.currentUserID = %d\n", m.currentUserID)
 
 	// Ensure the accepting user exists in our database
+	// First try by username, then by peer ID (in case placeholder was created)
 	acceptingUser, err := m.storage.GetUserByUsername(ctx, response.Username)
 	if err != nil || acceptingUser == nil {
-		// Create user record for the accepting user
-		acceptingUser = &storage.User{
-			Username:     response.Username,
-			PasswordHash: "P2P_REMOTE_USER",
-			FullName:     response.FullName,
-			PeerID:       response.PeerID,
+		// Try by peer ID (might be a placeholder user)
+		acceptingUser, err = m.storage.GetUserByPeerID(ctx, response.PeerID)
+		if err != nil || acceptingUser == nil {
+			// Still doesn't exist, create new user
+			acceptingUser = &storage.User{
+				Username:     response.Username,
+				PasswordHash: "P2P_REMOTE_USER",
+				FullName:     response.FullName,
+				PeerID:       response.PeerID,
+			}
+			if err := m.storage.CreateUser(ctx, acceptingUser); err != nil {
+				fmt.Printf("Error creating user record for %s: %v\n", response.Username, err)
+				return
+			}
+			fmt.Printf("DEBUG handleIncomingAccept: Created user record for %s (ID: %d)\n", acceptingUser.Username, acceptingUser.ID)
+		} else {
+			// Found by peer ID - update the placeholder with real info
+			fmt.Printf("DEBUG handleIncomingAccept: Found placeholder user by peer ID (ID: %d), updating with real info\n", acceptingUser.ID)
+			acceptingUser.Username = response.Username
+			acceptingUser.FullName = response.FullName
+			if err := m.storage.UpdateUser(ctx, acceptingUser); err != nil {
+				fmt.Printf("Warning: Failed to update placeholder user: %v\n", err)
+			} else {
+				fmt.Printf("DEBUG handleIncomingAccept: Updated placeholder user to %s (%s)\n", acceptingUser.Username, acceptingUser.FullName)
+			}
 		}
-		if err := m.storage.CreateUser(ctx, acceptingUser); err != nil {
-			fmt.Printf("Error creating user record for %s: %v\n", response.Username, err)
-			return
-		}
-		fmt.Printf("DEBUG handleIncomingAccept: Created user record for %s (ID: %d)\n", acceptingUser.Username, acceptingUser.ID)
 	} else {
 		fmt.Printf("DEBUG handleIncomingAccept: Found existing user %s (ID: %d)\n", acceptingUser.Username, acceptingUser.ID)
 	}
@@ -413,10 +428,13 @@ func (m *Manager) handleIncomingAccept(response *FriendResponseMessage, fromPeer
 			existingRequest.Status = "accepted"
 			now := time.Now()
 			existingRequest.AcceptedAt = now
+			// Update with real username/fullname from response
+			existingRequest.Username = acceptingUser.Username
+			existingRequest.FullName = acceptingUser.FullName
 			if err := m.storage.UpdateFriendRequest(ctx, existingRequest); err != nil {
 				fmt.Printf("Warning: Failed to update friend request: %v\n", err)
 			} else {
-				fmt.Printf("DEBUG handleIncomingAccept: Updated existing request to accepted\n")
+				fmt.Printf("DEBUG handleIncomingAccept: Updated existing request to accepted with real name %s\n", acceptingUser.FullName)
 			}
 		}
 	} else {
