@@ -88,6 +88,7 @@ func (a *App) Login(username, password string) error {
 	}
 
 	// Set current user in managers
+	fmt.Printf("DEBUG Login: Setting current user in managers: ID=%d, Username=%s\n", user.ID, user.Username)
 	a.friendManager.SetCurrentUser(user.ID)
 	a.messageManager.SetCurrentUser(user.ID)
 

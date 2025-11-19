@@ -52,6 +52,7 @@ func NewManager(store storage.Storage, h host.Host) *Manager {
 
 // SetCurrentUser sets the currently logged-in user
 func (m *Manager) SetCurrentUser(userID int64) {
+	fmt.Printf("DEBUG SetCurrentUser called: old=%d, new=%d\n", m.currentUserID, userID)
 	m.currentUserID = userID
 }
 
@@ -345,6 +346,8 @@ func (m *Manager) handleIncomingRequest(request *FriendRequestMessage, fromPeer 
 func (m *Manager) handleIncomingAccept(response *FriendResponseMessage, fromPeer peer.ID) {
 	ctx := context.Background()
 
+	fmt.Printf("DEBUG handleIncomingAccept: m.currentUserID = %d\n", m.currentUserID)
+
 	// Ensure the accepting user exists in our database
 	acceptingUser, err := m.storage.GetUserByUsername(ctx, response.Username)
 	if err != nil || acceptingUser == nil {
@@ -359,10 +362,14 @@ func (m *Manager) handleIncomingAccept(response *FriendResponseMessage, fromPeer
 			fmt.Printf("Error creating user record for %s: %v\n", response.Username, err)
 			return
 		}
+		fmt.Printf("DEBUG handleIncomingAccept: Created user record for %s (ID: %d)\n", acceptingUser.Username, acceptingUser.ID)
+	} else {
+		fmt.Printf("DEBUG handleIncomingAccept: Found existing user %s (ID: %d)\n", acceptingUser.Username, acceptingUser.ID)
 	}
 
 	// Get current user
 	if m.currentUserID == 0 {
+		fmt.Printf("DEBUG handleIncomingAccept: currentUserID is 0, skipping friendship creation\n")
 		fmt.Printf("\n✓ %s accepted your friend request!\n", response.FullName)
 		fmt.Printf("   You are now friends with %s (%s)\n", response.FullName, response.Username)
 		fmt.Print("> ")
