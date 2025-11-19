@@ -214,13 +214,20 @@ func (a *App) GetFriendRequests() ([]map[string]interface{}, error) {
 		return nil, fmt.Errorf("not logged in: %w", err)
 	}
 
+	fmt.Printf("DEBUG GetFriendRequests: Current user = %s (ID: %d)\n", user.Username, user.ID)
+
 	requests, err := a.storage.GetPendingFriendRequests(a.ctx, user.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get friend requests: %w", err)
 	}
 
+	fmt.Printf("DEBUG GetFriendRequests: Found %d pending requests\n", len(requests))
+
 	result := make([]map[string]interface{}, len(requests))
 	for i, req := range requests {
+		fmt.Printf("DEBUG GetFriendRequests: Request %d: ID=%d, UserID=%d, FriendID=%d, Username=%s, FullName=%s\n",
+			i, req.ID, req.UserID, req.FriendID, req.Username, req.FullName)
+
 		result[i] = map[string]interface{}{
 			"id":       req.ID,
 			"username": req.Username,
