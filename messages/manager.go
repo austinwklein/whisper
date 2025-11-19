@@ -46,14 +46,19 @@ func (m *Manager) SetCurrentUser(userID int64) {
 
 // SendMessage sends a direct message to a friend
 func (m *Manager) SendMessage(ctx context.Context, currentUser *storage.User, toUsername string, content string) error {
+	fmt.Printf("DEBUG SendMessage: Looking up user '%s'\n", toUsername)
+
 	// Look up recipient user
 	toUser, err := m.storage.GetUserByUsername(ctx, toUsername)
 	if err != nil {
+		fmt.Printf("DEBUG SendMessage: GetUserByUsername error: %v\n", err)
 		return fmt.Errorf("user not found: %w", err)
 	}
 	if toUser == nil {
+		fmt.Printf("DEBUG SendMessage: User '%s' not found in users table\n", toUsername)
 		return fmt.Errorf("user '%s' not found - you must be friends first (use 'add %s' to send friend request)", toUsername, toUsername)
 	}
+	fmt.Printf("DEBUG SendMessage: Found user '%s' (ID: %d, PeerID: %s)\n", toUser.Username, toUser.ID, toUser.PeerID)
 
 	// Check if they are friends
 	friendship, err := m.storage.GetFriendRequest(ctx, currentUser.ID, toUser.ID)
